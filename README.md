@@ -275,3 +275,113 @@ You saw specific use cases of precision and recall. These two measures depend he
 
 This brings us to the close of the end-to-end session exploring the flowers dataset. We have built a model with a good AUC at the end of 3 epochs. If you train this using more epochs, you should be able to reach a better AUC value.
 
+# Industry Demo: Using CNNs with X-ray Images
+
+## Introduction
+In the previous session, you learnt how to set up a pipeline for building and training CNNs. In this session, you will apply your skills to detect anomalies in **chest X-Ray scans**. 
+
+### Recap of Techniques Learnt
+You performed the following steps in the previous session:
+1. **Data Preparation:**
+    1. Made sure all our images were of the same resolution.
+    2. Placed the images in two different folders - 'rose' and 'daisy'. This method will work for any application where you're trying to train using images.
+2. **Data Pre-processing: Morphological Operations**
+    1. Did thresholding on the image - converted it from a grey image to a binary image.
+    2. Looked at Erosion, Dilation, Opening, Closing.
+3. **Data Pre-processing: Normalisation**
+    1. Understood the need for normalisation.
+    2. Saw some commonly used methods of normalisation.
+4. **Data Pre-Processing: Augmentation**
+    1. Understood the need for data augmentation.
+    2. Learnt about two types of transformations for augmentation - linear and affine.
+    3. Saw different ways to augment - translation, rotation, scaling, etc.
+5. **Model Building**
+    1. Running ablation experiments
+    2. Overfitting on a smaller version of the training set
+    3. Hyperparameter tuning
+    4. Mode training and evaluation
+
+### Application to Chest X-rays
+In this session, you will use these above methodologies from the previous session onto Chest X-ray data images.
+
+### Examining X-ray images
+In this session, we will apply what we had done in the first session to spot anomalies in Chest X-ray images. Which anomaly are we trying to spot? How do these anomalies look like? Let’s find the answers to these questions in an introduction of Chest X-ray images.
+
+You can download the notebook used in this session below. You can also download the CXR data directly on your Nimblebox using the instructions provided at the bottom of this page.
+
+[Jupyter Notebook: Working with Chest XRay Images](dataset/Working_With_Chest_XRay_Images.ipynb)
+
+![title](img/ai_application_medicine.JPG)
+
+You saw that deep learning can be effectively used for spotting anomalies in X-rays to detect various diseases. You also saw that the application of deep learning to medical images has become easier due to the availability of open-source images. In this session, we will use X-Ray images from [this CXR dataset](https://www.kaggle.com/nih-chest-xrays) (though we will be using only two of these classes - the download instructions for the subsetted dataset are provided at the bottom of this page).
+
+Let's go ahead and look at the data.
+
+#### Getting CXR data on Nimblebox
+For the purpose of this demonstration, we'll be working with two classes - 'effusion' and 'nofinding'. [We have collected these images in this zip file link](dataset/CXR_data_Two_classes.zip.001). 
+
+**Notebook with dataset** is present in the Nimblebox in the machine "CNN Assignment -2".  Dataset is present in two folders: 'effusion' and 'nofinding' on your storage. 
+
+### CXR Data Preprocessing - Augmentation
+As we did for the Flowers dataset, let's now conduct the preprocessing steps with the CXR dataset. Due to the nature of the CXR images, some of these steps will be a little different.
+
+For the flowers dataset, we did all the augmentations we possibly could. However, for the CXR data, we had some specific constraints.
+1. Vertical flip needs to be set as 'False'. This is because CXR images have a natural orientation - up to down. 
+2. We cannot (i.e. should not) do a centre crop for CXR images, as the anomaly can be in an area outside the cropped portion of the image.
+
+### CXR Data Preprocessing - Normalisation
+The next step in our preprocessing is **normalisation**. In this case, we will have to slightly modify the normalisation technique (rather than just dividing by 255). Let's see why.
+
+What did we do differently here as compared to the flowers dataset?
+1. Since the CXR images are not "natural images", we do not use the "divide by 255" strategy. Instead, we take the max-min approach to normalisation. Since you do not know for sure that the range of each pixel is 0-255, you normalise using the min-max values.
+2. In the conditional statement 'if mode == train', use a random number generator so that only a fraction of the images get transformed (rather than all of them). 
+
+### CXR: Network Building
+Now that our data is ready and prepared, let's get into building the model.
+
+The data class is highly imbalanced. The ratio of 'effusion' vs 'nofinding' is almost 10 (107/1000). As most of the data belongs to only one class, simply training in this scenario will not work as the model will learn mostly learn and classify most of the data as 'nofinding' resulting in high accuracy.  If you notice, around 90 per cent (1000/1107) of the data is 'nofinding' and if it classifies all the data as same, the accuracy will be 90 per cent which is close to 87 per cent accuracy which we have got. So, the objective to correctly classify the 'effusion'  is not fulfilled. The high accuracy clearly misleads us and therefore we will use AUC to validate the result. 
+
+To recall, the basic steps to build the model will remain the same as you have seen in the previous session :
+1. Import the resnet code (same one we used in the last session)
+2. Run the augmented data generator
+3. Perform an ablation Run
+4. Fit the model
+
+Finally, let's use validation AUC instead of accuracy as evaluation metrics and train the model keeping everything same such as network layers, data augmentation, pre-processing etc. 
+
+Let's quickly recap the important concepts.
+1. The model is not performing very well on AUC, the measure we had chosen. 
+2. The main reason for this is the prevalence problem. There are just not as many abnormal cases available in the dataset. This problem will occur in almost all medical imaging problems (and for that matter, in most datasets that have a class imbalance)
+3. To tackle this problem, we introduced 'weighted categorical cross-entropy'. This is a measure of loss, which applies weights to different forms of errors.
+
+### Weighted Cross-Entropy
+A common solution to the low prevalence rate problem is using a **weighted cross-entropy loss**. The loss is modified such that misclassifications of the low-prevalence class are penalised more heavily than the other class.
+
+Therefore, every time the model makes an error on the abnormal class (in this case, ‘effusion’), we penalise it heavily by multiplying the loss by a high value of weights. This results in an increase in loss for misclassified classes and therefore the change in weights due to backpropagation is more. So, the learning curve for the weights responsible for misclassification is more. 
+
+Let’s say “no finding” is class 0 and “effusion” is class 1.
+
+**bin_weights[0,0]:**  Actual class: 0, Predicted class: 0, so no penalty, just normal **weight of 1**. 
+**bin_weights[1,1]:**  Actual class: 1, Predicted class: 1, so no penalty, just normal **weight of 1**. 
+
+In case of abnormality: 
+**bin_weights[1,0]** - Actual class is 1, Predicted class is 0, penalise by weight of 5.
+**bin_weights[0,1]** - Actual class is 0, Predicted class is 1, penalise by weight of 5.
+
+**Additional Reading**
+1. We turned to weighted cross-entropy when our neural network was not performing well. [Here's an article that lists down several reasons why your Neural Network may not be performing well](https://blog.slavv.com/37-reasons-why-your-neural-network-is-not-working-4020854bd607).
+
+### CXR: Final Run
+In the last page, we identified a problem with our model. We identified a root cause for this problem and proposed a specific solution - **weighted categorical cross-entropy**.
+
+We save the model weights only when there is an increase in 'validation accuracy'. The method to save the model weights is called **checkpointing** and it is called using **keras callback**. The results clearly demonstrate that the AUC has significantly increased from 0.19 (without weights) to 0.78 (with weights).  Let's summarize what we have learnt in this session. 
+
+In the next few epochs, the AUC get increased further to 0.85 from 0.78 (you can run the notebook to see the results).  If we want to make a prediction on an unseen sample, the standard procedure is to first create the model architecture and initialise it with the trained weights.  Then predict using the model. This brings us to the end of the session. We would just like to recap the skills and understanding you would have gained through this:
+
+1. How a typical end-to-end pipeline in the industry looks like. 
+2. How to preprocess image data when we are trying to train a CNN.
+3. How to choose a network architecture
+4. How to perform ablation runs
+5. How to spot that the training is not working, and then further how to correct this flaw.
+
+
